@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ledger</title>
+  <style>
+    /* A drastically different style */
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: "Courier New", monospace;
+      background: #1e1e1e;
+      color: #f0f0f0;
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    h1 {
+      margin: 20px 0 10px 0;
+      font-size: 2em;
+      color: #00ff66;
+    }
+
+    .ledger-container {
+      width: 90%;
+      max-width: 800px;
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #00ff66;
+      border-radius: 8px;
+      background: #2c2c2c;
+    }
+
+    .ledger-address {
+      font-weight: bold;
+      font-size: 1.2em;
+      margin-bottom: 8px;
+      color: #ffcc00;
+    }
+
+    .transaction {
+      border: 1px dashed #666;
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 4px;
+      background: #333;
+    }
+
+    .transaction p {
+      margin: 4px 0;
+      line-height: 1.4;
+    }
+
+    .label {
+      color: #aaa;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Ledger</h1>
+  <div id="ledgerRoot"></div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const response = await fetch('/apps/pay/state');
+        const data = await response.json();
+        const ledgerRoot = document.getElementById('ledgerRoot');
+        ledgerRoot.innerHTML = '';
+
+        // data.ledger is an array of items like:
+        // {"transactions":[{"from":"...","to":"...","value":"..."}, ...], "address":"..."}
+        data.ledger.forEach(item => {
+          const container = document.createElement('div');
+          container.className = 'ledger-container';
+
+          const addressEl = document.createElement('div');
+          addressEl.className = 'ledger-address';
+          addressEl.textContent = `Address: ${item.address}`;
+          container.appendChild(addressEl);
+
+          item.transactions.forEach(tx => {
+            const txEl = document.createElement('div');
+            txEl.className = 'transaction';
+
+            // "from"
+            const fromP = document.createElement('p');
+            fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
+            txEl.appendChild(fromP);
+
+            // "to"
+            const toP = document.createElement('p');
+            toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
+            txEl.appendChild(toP);
+
+            // "value"
+            const valueP = document.createElement('p');
+            valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
+            txEl.appendChild(valueP);
+
+            container.appendChild(txEl);
+          });
+
+          ledgerRoot.appendChild(container);
+        });
+      } catch (err) {
+        console.error('Failed to fetch ledger data:', err);
+      }
+    });
+  </script>
+</body>
+</html>

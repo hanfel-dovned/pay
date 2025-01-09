@@ -1,0 +1,10 @@
+:~  title+'%pay'
+    info+'Pay other Urbit users.'
+    color+0x12.6b0f
+    base+'pay'
+    site+/apps/pay
+    version+[0 1 0]
+    website+'https://x.com/hanfel_dovned'
+    license+''
+==
+
