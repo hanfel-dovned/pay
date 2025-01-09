@@ -10,3 +10,8 @@ Up Next:
 
 - Timer to regularly fetch transactions.
 - Let users add more ETH addresses and change their RPC node.
+- Do math on transactions.
+
+Future:
+
+- Invoices and payments.
