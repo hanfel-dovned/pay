@@ -3,7 +3,6 @@
 <head>
   <title>Ledger</title>
   <style>
-    /* A drastically different style */
     body, html {
       margin: 0;
       padding: 0;
@@ -99,7 +98,7 @@
       border-color: #00ff66;
     }
 
-    #payBtn {
+    button {
       background: #444;
       border: 1px solid #00ff66;
       border-radius: 4px;
@@ -107,11 +106,43 @@
       font-size: 16px;
       padding: 10px;
       cursor: pointer;
+      margin-bottom: 10px;
     }
 
-    #payBtn:hover {
+    button:hover {
       background: #00ff66;
       color: #444;
+    }
+
+    /* Spinner */
+    .spinner-container {
+      display: none;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #00ff66;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Hide elements by default */
+    #amountContainer {
+      display: none;
+    }
+    #addressReceivedSection {
+      display: none;
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -119,97 +150,180 @@
   <h1>Ledger</h1>
   <div id="ledgerRoot"></div>
 
-  <!-- Payment UI -->
   <div class="payment-section">
     <h2>Make a Payment</h2>
 
-    <div class="payment-field">
-      <label for="paymentAmount">Amount (ETH)</label>
-      <input type="text" id="paymentAmount" placeholder="e.g. 0.1">
-    </div>
-
+    <!-- Step 1: Get Address -->
     <div class="payment-field">
       <label for="addressString">Urbit ID</label>
       <input type="text" id="addressString" placeholder="e.g. ~sampel-palnet">
     </div>
 
-    <button id="payBtn">Pay</button>
+    <button id="getAddressBtn">Get Address</button>
+
+    <!-- Loading Spinner -->
+    <div class="spinner-container" id="spinnerContainer">
+      <div class="spinner"></div>
+      <span id="spinnerText"></span>
+    </div>
+
+    <!-- Address Display -->
+    <div id="addressReceivedSection">
+      <p id="destinationAddress"></p>
+    </div>
+
+    <!-- Step 2: Enter Amount and Pay -->
+    <div id="amountContainer">
+      <div class="payment-field">
+        <label for="paymentAmount">Amount (ETH)</label>
+        <input type="text" id="paymentAmount" placeholder="e.g. 0.1">
+      </div>
+      <button id="payBtn">Pay</button>
+    </div>
   </div>
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
-      // Fetch ledger data
+      // ----- Render single address and ledger data -----
       try {
         const response = await fetch('/apps/pay/state');
         const data = await response.json();
         const ledgerRoot = document.getElementById('ledgerRoot');
         ledgerRoot.innerHTML = '';
 
-        // data.ledger is an array of items like:
-        // { "transactions":[{"from":"...","to":"...","value":"..."}, ...], "address":"..." }
-        data.ledger.forEach(item => {
-          const container = document.createElement('div');
-          container.className = 'ledger-container';
+        // The response is an object like:
+        // {
+        //   "address": "0x123...",
+        //   "ledger": [
+        //     { "from": "0xabc...", "to": "0xdef...", "value": "0.1" },
+        //     ...
+        //   ]
+        // }
 
-          const addressEl = document.createElement('div');
-          addressEl.className = 'ledger-address';
-          addressEl.textContent = `Address: ${item.address}`;
-          container.appendChild(addressEl);
+        const { address, ledger } = data;
 
-          item.transactions.forEach(tx => {
-            const txEl = document.createElement('div');
-            txEl.className = 'transaction';
+        // Create a container
+        const container = document.createElement('div');
+        container.className = 'ledger-container';
 
-            const fromP = document.createElement('p');
-            fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
-            txEl.appendChild(fromP);
+        // Display the single address
+        const addressEl = document.createElement('div');
+        addressEl.className = 'ledger-address';
+        addressEl.textContent = `Address: ${address}`;
+        container.appendChild(addressEl);
 
-            const toP = document.createElement('p');
-            toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
-            txEl.appendChild(toP);
+        // Display the ledger of transactions
+        ledger.forEach(tx => {
+          const txEl = document.createElement('div');
+          txEl.className = 'transaction';
 
-            const valueP = document.createElement('p');
-            valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
-            txEl.appendChild(valueP);
+          const fromP = document.createElement('p');
+          fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
+          txEl.appendChild(fromP);
 
-            container.appendChild(txEl);
-          });
+          const toP = document.createElement('p');
+          toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
+          txEl.appendChild(toP);
 
-          ledgerRoot.appendChild(container);
+          const valueP = document.createElement('p');
+          valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
+          txEl.appendChild(valueP);
+
+          container.appendChild(txEl);
         });
+
+        ledgerRoot.appendChild(container);
       } catch (err) {
         console.error('Failed to fetch ledger data:', err);
       }
 
-      // Payment button handler
-      document.getElementById('payBtn').addEventListener('click', async () => {
-        const amountInput = document.getElementById('paymentAmount').value;
-        const addressStr = document.getElementById('addressString').value;
+      let foundAddress = null;
+      let pollInterval = null;
 
-        if (!amountInput || !addressStr) {
-          alert('Please enter both amount and address string.');
+      // ----- Step 1: Get Address -----
+      const getAddressBtn = document.getElementById('getAddressBtn');
+      const spinnerContainer = document.getElementById('spinnerContainer');
+      const spinnerText = document.getElementById('spinnerText');
+      const addressReceivedSection = document.getElementById('addressReceivedSection');
+      const destinationAddress = document.getElementById('destinationAddress');
+      const amountContainer = document.getElementById('amountContainer');
+
+      getAddressBtn.addEventListener('click', async () => {
+        const addressStr = document.getElementById('addressString').value;
+        if (!addressStr) {
+          alert('Please enter an Urbit ID.');
           return;
         }
 
         try {
-          // 1) Fetch address from /apps/pay/address/<input-string>
-          const res = await fetch(`/apps/pay/address/${encodeURIComponent(addressStr)}`);
-          const jsonData = await res.json();
-          const paymentAddress = jsonData.address;
-
-          if (!paymentAddress) {
-            alert('No address returned from server.');
+          // 1) Initiate address lookup
+          const postRes = await fetch(`/apps/pay/find-address/${encodeURIComponent(addressStr)}`, {
+            method: 'POST'
+          });
+          if (!postRes.ok) {
+            alert(`Failed to initiate address lookup: ${postRes.status}`);
             return;
           }
 
-          // 2) Trigger MetaMask to send transaction
-          //    We'll request the user to connect if not already connected
+          // Show spinner
+          spinnerContainer.style.display = 'flex';
+          spinnerText.textContent = `Waiting for ${addressStr}'s address...`;
+          getAddressBtn.disabled = true; // prevent multiple clicks
+
+          // 2) Poll get-address
+          pollInterval = setInterval(async () => {
+            try {
+              const getRes = await fetch(`/apps/pay/get-address/${encodeURIComponent(addressStr)}`);
+              if (!getRes.ok) {
+                console.error(`GET response error: ${getRes.status}`);
+                return;
+              }
+
+              const getData = await getRes.json();
+              // Example: { "status": "waiting" } or { "address": "0x123..." }
+              if (getData.status === 'waiting') {
+                return; // keep polling
+              }
+
+              // If we get an actual address:
+              foundAddress = getData.address;
+              clearInterval(pollInterval);
+
+              spinnerContainer.style.display = 'none'; // hide spinner
+              addressReceivedSection.style.display = 'block'; // show address
+              destinationAddress.textContent = `Destination Address: ${foundAddress}`;
+              amountContainer.style.display = 'block'; // show amount box
+            } catch (err) {
+              console.error('Polling error:', err);
+              clearInterval(pollInterval);
+              spinnerContainer.style.display = 'none';
+            }
+          }, 3000);
+        } catch (err) {
+          console.error('Failed to find address:', err);
+          alert('Failed to find address. Check console for details.');
+        }
+      });
+
+      // ----- Step 2: Pay -----
+      document.getElementById('payBtn').addEventListener('click', async () => {
+        const amountInput = document.getElementById('paymentAmount').value;
+        if (!amountInput) {
+          alert('Please enter an amount.');
+          return;
+        }
+
+        if (!foundAddress) {
+          alert('We don’t have a valid address to pay yet.');
+          return;
+        }
+
+        try {
           if (!window.ethereum) {
             alert('MetaMask is not available in your browser.');
             return;
           }
 
-          // Get user accounts
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           if (!accounts || !accounts.length) {
             alert('No MetaMask accounts found.');
@@ -218,14 +332,13 @@
 
           const fromAccount = accounts[0];
 
-          // Convert ETH amount (string) to hexadecimal Wei
-          // Quick approach without external libraries:
-          const amountWei = BigInt(Math.floor(parseFloat(amountInput) * 1e18)); 
+          // Convert ETH to Wei (as hex)
+          const amountWei = BigInt(Math.floor(parseFloat(amountInput) * 1e18));
           const hexValue = '0x' + amountWei.toString(16);
 
           const txParams = {
             from: fromAccount,
-            to: paymentAddress,
+            to: foundAddress,
             value: hexValue
           };
 

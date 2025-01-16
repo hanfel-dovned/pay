@@ -6,8 +6,9 @@
 +$  versioned-state  $%(state-0)
 +$  state-0  
   $:  %0
-      =ledger
-      public=wallet
+      wallet=address
+      ledger=(list transaction)
+      addresses=(map ship [=address retrieved=@da])
   ==
 +$  card  card:agent:gall
 --
@@ -51,7 +52,8 @@
 ++  on-agent
   |=  [=wire =sign:agent:gall]
   ^-  (quip card _this)
-  `this
+  =^  cards  state  abet:(agent:hc [wire sign])
+  [cards this]
 ::
 ++  on-arvo
   |=  [=wire =sign-arvo]
@@ -78,9 +80,10 @@
 ::
 ++  init
   ^+  that
+  =.  wallet  '0xda2701e7832da518054d6cc727b28169a36acb2f'
   %-  emil
   :~  %-  alchemy-card
-      ['0xda2701e7832da518054d6cc727b28169a36acb2f' %.n]
+      [wallet %.n]
   ::
       ::  XX Send a card to Behn to start the retrieval timer.
       ::  Have Behn alternate between from=%.n and from=%.y.
@@ -96,16 +99,16 @@
 ::  for transactions either from this address
 ::  or to this address.
 ++  alchemy-card
-  |=  [=wallet from=?]
+  |=  [=address from=?]
   ^-  card
-  :*  %pass  /alchemy/[wallet]  %arvo  %i
-      %request  (alchemy-request wallet from) 
+  :*  %pass  /alchemy/[address]  %arvo  %i
+      %request  (alchemy-request address from) 
       *outbound-config:iris
   ==
 ::
 ::  Create an HTTP request to Alchemy.
 ++  alchemy-request
-  |=  [=wallet from=?]
+  |=  [=address from=?]
   ^-  request:http
   :*  %'POST'
       'https://eth-sepolia.g.alchemy.com/v2/Qv7RwrBl83LReBuiT_E8KcAjEkoe4yd6'
@@ -130,9 +133,9 @@
                   ['order' s+'asc']
                   ['withMetadata' b+%.n]
                   ['maxCount' s+'0x3e8'] :: 0x3e8 = 1000 = max allowed
-                  ?:  from
-                    ['fromAddress' [%s wallet]]
-                  ['toAddress' [%s wallet]]
+                  ?:  from  :: can only include one of these at a time
+                    ['fromAddress' [%s address]]
+                  ['toAddress' [%s address]]
               ==
           ==
       ==
@@ -143,23 +146,49 @@
   |=  [=wire sign=sign-arvo]
   ^+  that
     ?.  ?=([%iris %http-response *] sign)  that
-  =/  =wallet  +6:wire
+  =/  =address  +6:wire
   =/  response  client-response.sign
   ?+    -.response  that
       %finished
     =/  mime  (need full-file.response)
     =/  =json  (need (de:json:html q.data.mime))
     =/  transactions  (dejs-response json)
-    =.  ledger  (~(put by ledger) wallet transactions)
+    =.  ledger  transactions
     that
   ==
 ::
+::  Return our address to a ship that subscribes to us.
 ++  watch
   |=  =path
   ^+  that
   ?+    path  that
       [%http-response *]
     that
+  ::
+      [%address ~]
+    %-  emit
+    :*  %give  %fact  ~  
+        %pay-address
+        !>(`address`wallet)
+    ==
+  ==
+::
+::  Get a response from another user with their address.
+::  Save it, along with the time.
+++  agent
+  |=  [=wire =sign:agent:gall]
+  ?+    wire  that
+      [%addresses ~]
+    ?+    -.sign  that
+        %fact
+      ?+    p.cage.sign  that
+          %pay-address
+        =/  =address  !<(address q.cage.sign)
+        =.  addresses  
+          (~(put by addresses) src.bowl [address now.bowl])
+        that
+      ==
+    ==
   ==
 :: 
 ++  poke
@@ -181,9 +210,22 @@
     (emil (flop (send [405 ~ [%stock ~]])))
     ::
       %'POST'
-    ?~  body.request.inbound-request  !!
-    =/  json  (de:json:html q.u.body.request.inbound-request)
-    that
+    ?+    site  
+      (emil (flop (send [404 ~ [%plain "404 - Not Found"]])))
+    ::
+    ::  Retrieve the wallet address of the user
+    ::  specified in the URL.
+        [%apps %pay %find-address @ ~]
+      =/  =ship  (slav %p +30:site)
+      %-  emil
+      %+  weld
+        (flop (send [200 ~ [%json [%s 'waiting']]]))
+      :~  ^-  card
+          :*  %pass  /addresses  %agent
+              [ship %pay]  %watch  /address
+          ==
+      ==
+    ==
     ::
       %'GET'
     %-  emil  %-  flop  %-  send
@@ -195,27 +237,31 @@
         [%apps %pay %state ~]
       [200 ~ [%json enjs-state]]
     ::
-        [%apps %pay %address @ ~]
-      =/  address  '0x32B3A783f2dF80a01B1a8D3033c2Cab32b477D2b'
-      [200 ~ [%json [%o (malt ['address' [%s address]]~)]]]
+    ::  If we just now retrieved another user's address,
+    ::  respond with it. Otherwise, respond 'waiting'.
+        [%apps %pay %get-address @ ~]
+      =/  =ship  (slav %p +30:site)
+      =/  log  (~(get by addresses) ship)
+      =;  response
+        [200 ~ [%json [%o (malt response)]]]
+      ?~  log
+        ['status' [%s 'waiting']]~
+      =/  cutoff=@da  (sub now.bowl ~m5)
+      ?:  (lth retrieved.u.log cutoff)
+        ['status' [%s 'waiting']]~
+      ['address' [%s address.u.log]]~
     ==
   ==
 ::
 ++  enjs-state
   =,  enjs:format
   ^-  json
-  %-  frond
-  :-  %ledger
-  :-  %a
-  %+  turn
-    ~(tap by ledger)
-  |=  [=wallet transactions=(list transaction)]
   %-  pairs
   :~  [%address [%s wallet]]
-      :-  %transactions  :: %ledger?
+      :-  %ledger
       :-  %a
       %+  turn
-        transactions
+        ledger
       |=  [from=@t to=@t value=@t]
       %-  pairs
       :~  [%from [%s from]]
