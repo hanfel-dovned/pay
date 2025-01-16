@@ -194,6 +194,10 @@
     ::
         [%apps %pay %state ~]
       [200 ~ [%json enjs-state]]
+    ::
+        [%apps %pay %address @ ~]
+      =/  address  '0x32B3A783f2dF80a01B1a8D3033c2Cab32b477D2b'
+      [200 ~ [%json [%o (malt ['address' [%s address]]~)]]]
     ==
   ==
 ::

@@ -58,14 +58,87 @@
       color: #aaa;
       margin-right: 4px;
     }
+
+    /* Payment UI */
+    .payment-section {
+      width: 90%;
+      max-width: 600px;
+      margin: 20px 0;
+      background: #2c2c2c;
+      border: 1px solid #00ff66;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .payment-section h2 {
+      margin: 0 0 10px 0;
+      color: #ffcc00;
+    }
+
+    .payment-field {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 10px;
+    }
+
+    .payment-field label {
+      margin-bottom: 5px;
+      color: #aaa;
+    }
+
+    .payment-field input[type="text"] {
+      padding: 8px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #444;
+      color: #fff;
+    }
+
+    .payment-field input[type="text"]:focus {
+      outline: none;
+      border-color: #00ff66;
+    }
+
+    #payBtn {
+      background: #444;
+      border: 1px solid #00ff66;
+      border-radius: 4px;
+      color: #00ff66;
+      font-size: 16px;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    #payBtn:hover {
+      background: #00ff66;
+      color: #444;
+    }
   </style>
 </head>
 <body>
   <h1>Ledger</h1>
   <div id="ledgerRoot"></div>
 
+  <!-- Payment UI -->
+  <div class="payment-section">
+    <h2>Make a Payment</h2>
+
+    <div class="payment-field">
+      <label for="paymentAmount">Amount (ETH)</label>
+      <input type="text" id="paymentAmount" placeholder="e.g. 0.1">
+    </div>
+
+    <div class="payment-field">
+      <label for="addressString">Urbit ID</label>
+      <input type="text" id="addressString" placeholder="e.g. ~sampel-palnet">
+    </div>
+
+    <button id="payBtn">Pay</button>
+  </div>
+
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
+      // Fetch ledger data
       try {
         const response = await fetch('/apps/pay/state');
         const data = await response.json();
@@ -73,7 +146,7 @@
         ledgerRoot.innerHTML = '';
 
         // data.ledger is an array of items like:
-        // {"transactions":[{"from":"...","to":"...","value":"..."}, ...], "address":"..."}
+        // { "transactions":[{"from":"...","to":"...","value":"..."}, ...], "address":"..." }
         data.ledger.forEach(item => {
           const container = document.createElement('div');
           container.className = 'ledger-container';
@@ -87,17 +160,14 @@
             const txEl = document.createElement('div');
             txEl.className = 'transaction';
 
-            // "from"
             const fromP = document.createElement('p');
             fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
             txEl.appendChild(fromP);
 
-            // "to"
             const toP = document.createElement('p');
             toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
             txEl.appendChild(toP);
 
-            // "value"
             const valueP = document.createElement('p');
             valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
             txEl.appendChild(valueP);
@@ -110,6 +180,64 @@
       } catch (err) {
         console.error('Failed to fetch ledger data:', err);
       }
+
+      // Payment button handler
+      document.getElementById('payBtn').addEventListener('click', async () => {
+        const amountInput = document.getElementById('paymentAmount').value;
+        const addressStr = document.getElementById('addressString').value;
+
+        if (!amountInput || !addressStr) {
+          alert('Please enter both amount and address string.');
+          return;
+        }
+
+        try {
+          // 1) Fetch address from /apps/pay/address/<input-string>
+          const res = await fetch(`/apps/pay/address/${encodeURIComponent(addressStr)}`);
+          const jsonData = await res.json();
+          const paymentAddress = jsonData.address;
+
+          if (!paymentAddress) {
+            alert('No address returned from server.');
+            return;
+          }
+
+          // 2) Trigger MetaMask to send transaction
+          //    We'll request the user to connect if not already connected
+          if (!window.ethereum) {
+            alert('MetaMask is not available in your browser.');
+            return;
+          }
+
+          // Get user accounts
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          if (!accounts || !accounts.length) {
+            alert('No MetaMask accounts found.');
+            return;
+          }
+
+          const fromAccount = accounts[0];
+
+          // Convert ETH amount (string) to hexadecimal Wei
+          // Quick approach without external libraries:
+          const amountWei = BigInt(Math.floor(parseFloat(amountInput) * 1e18)); 
+          const hexValue = '0x' + amountWei.toString(16);
+
+          const txParams = {
+            from: fromAccount,
+            to: paymentAddress,
+            value: hexValue
+          };
+
+          await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [txParams],
+          });
+        } catch (error) {
+          console.error('Payment failed:', error);
+          alert('Payment failed. Check console for details.');
+        }
+      });
     });
   </script>
 </body>
