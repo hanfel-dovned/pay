@@ -144,12 +144,28 @@
       display: none;
       margin-bottom: 10px;
     }
+
+    /* Change address section */
+    .change-address-section {
+      width: 90%;
+      max-width: 600px;
+      margin: 20px 0;
+      background: #2c2c2c;
+      border: 1px solid #00ff66;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .change-address-section h2 {
+      margin: 0 0 10px 0;
+      color: #ffcc00;
+    }
   </style>
 </head>
 <body>
   <h1>Ledger</h1>
   <div id="ledgerRoot"></div>
 
+  <!-- Payment UI -->
   <div class="payment-section">
     <h2>Make a Payment</h2>
 
@@ -182,9 +198,21 @@
     </div>
   </div>
 
+  <!-- Change Address Section -->
+  <div class="change-address-section">
+    <h2>Change Address</h2>
+    <div class="payment-field">
+      <label for="newAddressInput">New Address</label>
+      <input type="text" id="newAddressInput" placeholder="e.g. 0x1234abcd...">
+    </div>
+    <button id="changeAddressBtn">Set New Address</button>
+  </div>
+
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
-      // ----- Render single address and ledger data -----
+      // ----------------------------------------------------------------------
+      // Fetch single address and ledger data
+      // ----------------------------------------------------------------------
       try {
         const response = await fetch('/apps/pay/state');
         const data = await response.json();
@@ -193,54 +221,63 @@
 
         // The response is an object like:
         // {
-        //   "address": "0x123...",
+        //   "address": "0x123..." or "none",
         //   "ledger": [
         //     { "from": "0xabc...", "to": "0xdef...", "value": "0.1" },
         //     ...
         //   ]
         // }
-
         const { address, ledger } = data;
 
-        // Create a container
         const container = document.createElement('div');
         container.className = 'ledger-container';
 
-        // Display the single address
+        // Create element for displaying single address
         const addressEl = document.createElement('div');
         addressEl.className = 'ledger-address';
-        addressEl.textContent = `Address: ${address}`;
+
+        if (address === 'none') {
+          addressEl.textContent = 'No address set yet';
+        } else {
+          addressEl.textContent = `Address: ${address}`;
+        }
+
         container.appendChild(addressEl);
 
-        // Display the ledger of transactions
-        ledger.forEach(tx => {
-          const txEl = document.createElement('div');
-          txEl.className = 'transaction';
+        // Display the ledger transactions only if address != 'none'
+        if (address !== 'none') {
+          ledger.forEach(tx => {
+            const txEl = document.createElement('div');
+            txEl.className = 'transaction';
 
-          const fromP = document.createElement('p');
-          fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
-          txEl.appendChild(fromP);
+            const fromP = document.createElement('p');
+            fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
+            txEl.appendChild(fromP);
 
-          const toP = document.createElement('p');
-          toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
-          txEl.appendChild(toP);
+            const toP = document.createElement('p');
+            toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
+            txEl.appendChild(toP);
 
-          const valueP = document.createElement('p');
-          valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
-          txEl.appendChild(valueP);
+            const valueP = document.createElement('p');
+            valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
+            txEl.appendChild(valueP);
 
-          container.appendChild(txEl);
-        });
+            container.appendChild(txEl);
+          });
+        }
 
         ledgerRoot.appendChild(container);
+
       } catch (err) {
         console.error('Failed to fetch ledger data:', err);
       }
 
+      // ----------------------------------------------------------------------
+      // Payment logic (two-phase address fetch + MetaMask payment)
+      // ----------------------------------------------------------------------
       let foundAddress = null;
       let pollInterval = null;
 
-      // ----- Step 1: Get Address -----
       const getAddressBtn = document.getElementById('getAddressBtn');
       const spinnerContainer = document.getElementById('spinnerContainer');
       const spinnerText = document.getElementById('spinnerText');
@@ -305,7 +342,7 @@
         }
       });
 
-      // ----- Step 2: Pay -----
+      // Pay
       document.getElementById('payBtn').addEventListener('click', async () => {
         const amountInput = document.getElementById('paymentAmount').value;
         if (!amountInput) {
@@ -349,6 +386,33 @@
         } catch (error) {
           console.error('Payment failed:', error);
           alert('Payment failed. Check console for details.');
+        }
+      });
+
+      // ----------------------------------------------------------------------
+      // Change Address logic
+      // ----------------------------------------------------------------------
+      document.getElementById('changeAddressBtn').addEventListener('click', async () => {
+        const newAddress = document.getElementById('newAddressInput').value.trim();
+        if (!newAddress) {
+          alert('Please enter a valid address.');
+          return;
+        }
+
+        try {
+          const res = await fetch(`/apps/pay/change-address/${encodeURIComponent(newAddress)}`, {
+            method: 'POST'
+          });
+          if (!res.ok) {
+            alert(`Failed to change address: ${res.status}`);
+            return;
+          }
+
+          // Simply reload without popping an alert
+          location.reload();
+        } catch (err) {
+          console.error('Failed to change address:', err);
+          alert('Failed to change address. Check console for details.');
         }
       });
     });

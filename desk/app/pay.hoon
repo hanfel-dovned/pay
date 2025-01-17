@@ -80,22 +80,15 @@
 ::
 ++  init
   ^+  that
-  =.  wallet  '0xda2701e7832da518054d6cc727b28169a36acb2f'
-  %-  emil
-  :~  %-  alchemy-card
-      [wallet %.n]
-  ::
-      ::  XX Send a card to Behn to start the retrieval timer.
-      ::  Have Behn alternate between from=%.n and from=%.y.
-  ::
-      :*  %pass   /eyre/connect   
-          %arvo  %e  %connect
-          `/apps/pay  %pay
-      ==
+  =.  wallet  'none'
+  %-  emit
+  :*  %pass   /eyre/connect   
+      %arvo  %e  %connect
+      `/apps/pay  %pay
   ==
 ::
 ::  Create an Iris card containing an
-::  HTTP requests to Alchemy, asking
+::  HTTP request to Alchemy, asking
 ::  for transactions either from this address
 ::  or to this address.
 ++  alchemy-card
@@ -141,7 +134,7 @@
       ==
   ==
 ::
-::  Handle a response from Alchemy
+::  Handle a response from Alchemy.
 ++  arvo
   |=  [=wire sign=sign-arvo]
   ^+  that
@@ -166,10 +159,12 @@
     that
   ::
       [%address ~]
-    %-  emit
-    :*  %give  %fact  ~  
-        %pay-address
-        !>(`address`wallet)
+    %-  emil
+    :~  [%give %kick ~[/address] ~]
+        :*  %give  %fact  ~  
+            %pay-address
+            !>(`address`wallet)
+        ==
     ==
   ==
 ::
@@ -202,6 +197,7 @@
 ++  handle-http
   |=  [eyre-id=@ta =inbound-request:eyre]
   ^+  that
+  ?>  =(src.bowl our.bowl)
   =/  ,request-line:server
     (parse-request-line:server url.request.inbound-request)
   =+  send=(cury response:schooner eyre-id)
@@ -212,6 +208,23 @@
       %'POST'
     ?+    site  
       (emil (flop (send [404 ~ [%plain "404 - Not Found"]])))
+    ::
+    ::  Edit my wallet address.
+    ::  Delete ledger and check Alchemy.
+        [%apps %pay %change-address @ ~]
+      =/  =address  +30:site
+      =.  wallet  address
+      =.  ledger  ~
+      %-  emil
+      %+  weld
+        (flop (send [200 ~ [%json [%s 'waiting']]]))
+      :~  %-  alchemy-card
+          [wallet %.n]
+        ::
+        ::  XX Send a card to Behn to start the retrieval timer.
+        ::  Have Behn alternate between from=%.n and from=%.y.
+        ::
+      ==
     ::
     ::  Retrieve the wallet address of the user
     ::  specified in the URL.
