@@ -1,5 +1,5 @@
 /-  *pay
-/+  dbug, default-agent, server, schooner
+/+  dbug, default-agent, server, schooner, ethereum, naive
 /*  ui  %html  /app/pay/html
 ::
 |%
@@ -192,6 +192,17 @@
   ?+    -.cage  !!
       %handle-http-request
     (handle-http !<([@ta =inbound-request:eyre] +.cage))
+  ::
+      %pay-signature
+    =/  =signature  !<(signature +.cage)
+    ~&  signature
+    ?.  =(sender.signature src.bowl)
+      ~&  >>>  'Liar! This poke did not come from <sender.signature>!'
+      that
+    ?.  (validate signature)
+      ~&  >>>  'Liar! Signature failed to validate!'
+      that
+    that
   ==
 ::
 ++  handle-http
@@ -238,6 +249,23 @@
               [ship %pay]  %watch  /address
           ==
       ==
+    ::
+    ::  Poke the receiver of the transaction with
+    ::  a messaged signed by the sending address.
+        [%apps %pay %attest ~]
+      ?~  body.request.inbound-request  !!
+      =/  json  
+        (de:json:html q.u.body.request.inbound-request)
+      =/  =signature  (dejs-signature (need json))
+      %-  emil
+      %+  weld
+        (flop (send [200 ~ [%json [%s 'sent']]]))
+      :~  ^-  card
+          :*  %pass  /signatures  %agent
+              [receiver.signature %pay]  %poke
+              %pay-signature  !>(signature)
+          ==
+      ==
     ==
     ::
       %'GET'
@@ -270,7 +298,8 @@
   =,  enjs:format
   ^-  json
   %-  pairs
-  :~  [%address [%s wallet]]
+  :~  [%our [%s (scot %p our.bowl)]]
+      [%address [%s wallet]]
       :-  %ledger
       :-  %a
       %+  turn
@@ -300,4 +329,70 @@
           ==
       ==
   ==
+::
+++  dejs-signature
+  =,  dejs:format
+  |=  jon=json
+  ^-  signature
+  %.  jon
+  %-  ot
+  :~  [%signature so]
+      [%sender (se %p)]
+      [%receiver (se %p)]
+      [%from so]
+      [%amount so]
+  ==
+::
+::  Encode the signed message back into JSON
+::  for validation.
+++  enjs-message
+  =,  enjs:format
+  |=  =signature
+  ^-  json
+  %-  pairs
+  :~  [%sender [%s (scot %p sender.signature)]]
+      [%receiver [%s (scot %p receiver.signature)]]
+      [%from [%s from.signature]]
+      [%amount [%s amount.signature]]
+  ==
+::
+::  Validate that from.signature = signer of sig.signature
+++  validate
+  |=  =signature
+  ^-  ?
+  =/  addy  (from-tape (trip from.signature))
+  =/  cock  (from-tape (trip hancock.signature))
+  =/  note=@uvI
+    =/  octs
+      %-  as-octs:mimes:html
+      %-  en:json:html
+      (enjs-message signature)
+    %-  keccak-256:keccak:crypto
+    %-  as-octs:mimes:html
+    ;:  (cury cat 3)
+      '\19Ethereum Signed Message:\0a'
+      (crip (a-co:co p.octs))
+      q.octs
+    ==
+  ~&  >>  note
+  ?.  &(=(20 (met 3 addy)) =(65 (met 3 cock)))  %.n
+  =/  r  (cut 3 [33 32] cock)
+  =/  s  (cut 3 [1 32] cock)
+  =/  v=@
+    =+  v=(cut 3 [0 1] cock)
+    ?+  v  !!
+      %0   0
+      %1   1
+      %27  0
+      %28  1
+    ==
+  ?.  |(=(0 v) =(1 v))  %.n
+  =/  xy
+    (ecdsa-raw-recover:secp256k1:secp:crypto note v r s)
+  =/  pub  :((cury cat 3) y.xy x.xy 0x4)
+  =/  add  (address-from-pub:key:ethereum pub)
+  =(addy add)
+::
+++  from-tape
+  |=(h=tape ^-(@ux (scan h ;~(pfix (jest '0x') hex))))
 --

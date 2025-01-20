@@ -210,6 +210,11 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
+      // We'll store our own ship name here after fetching state
+      let ourShipName = null;
+      // We'll also store the receiving ship name that user enters
+      let receivingShipName = null;
+
       // ----------------------------------------------------------------------
       // Fetch single address and ledger data
       // ----------------------------------------------------------------------
@@ -225,14 +230,16 @@
         //   "ledger": [
         //     { "from": "0xabc...", "to": "0xdef...", "value": "0.1" },
         //     ...
-        //   ]
+        //   ],
+        //   "our": "~zod"
         // }
-        const { address, ledger } = data;
+        const { address, ledger, our } = data;
+        ourShipName = our; // store our own ship name
 
         const container = document.createElement('div');
         container.className = 'ledger-container';
 
-        // Create element for displaying single address
+        // Display the single address
         const addressEl = document.createElement('div');
         addressEl.className = 'ledger-address';
 
@@ -273,7 +280,7 @@
       }
 
       // ----------------------------------------------------------------------
-      // Payment logic (two-phase address fetch + MetaMask payment)
+      // Payment logic (two-phase address fetch + MetaMask payment + signature)
       // ----------------------------------------------------------------------
       let foundAddress = null;
       let pollInterval = null;
@@ -286,15 +293,15 @@
       const amountContainer = document.getElementById('amountContainer');
 
       getAddressBtn.addEventListener('click', async () => {
-        const addressStr = document.getElementById('addressString').value;
-        if (!addressStr) {
+        receivingShipName = document.getElementById('addressString').value.trim();
+        if (!receivingShipName) {
           alert('Please enter an Urbit ID.');
           return;
         }
 
         try {
           // 1) Initiate address lookup
-          const postRes = await fetch(`/apps/pay/find-address/${encodeURIComponent(addressStr)}`, {
+          const postRes = await fetch(`/apps/pay/find-address/${encodeURIComponent(receivingShipName)}`, {
             method: 'POST'
           });
           if (!postRes.ok) {
@@ -304,20 +311,20 @@
 
           // Show spinner
           spinnerContainer.style.display = 'flex';
-          spinnerText.textContent = `Waiting for ${addressStr}'s address...`;
+          spinnerText.textContent = `Waiting for ${receivingShipName}'s address...`;
           getAddressBtn.disabled = true; // prevent multiple clicks
 
           // 2) Poll get-address
           pollInterval = setInterval(async () => {
             try {
-              const getRes = await fetch(`/apps/pay/get-address/${encodeURIComponent(addressStr)}`);
+              const getRes = await fetch(`/apps/pay/get-address/${encodeURIComponent(receivingShipName)}`);
               if (!getRes.ok) {
                 console.error(`GET response error: ${getRes.status}`);
                 return;
               }
 
               const getData = await getRes.json();
-              // Example: { "status": "waiting" } or { "address": "0x123..." }
+              // e.g. { "status": "waiting" } or { "address": "0x123..." }
               if (getData.status === 'waiting') {
                 return; // keep polling
               }
@@ -342,7 +349,7 @@
         }
       });
 
-      // Pay
+      // Pay and Sign
       document.getElementById('payBtn').addEventListener('click', async () => {
         const amountInput = document.getElementById('paymentAmount').value;
         if (!amountInput) {
@@ -355,19 +362,21 @@
           return;
         }
 
+        let fromAccount;
         try {
           if (!window.ethereum) {
             alert('MetaMask is not available in your browser.');
             return;
           }
 
+          // Request accounts
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           if (!accounts || !accounts.length) {
             alert('No MetaMask accounts found.');
             return;
           }
 
-          const fromAccount = accounts[0];
+          fromAccount = accounts[0];
 
           // Convert ETH to Wei (as hex)
           const amountWei = BigInt(Math.floor(parseFloat(amountInput) * 1e18));
@@ -379,13 +388,57 @@
             value: hexValue
           };
 
+          // Submit transaction
           await window.ethereum.request({
             method: 'eth_sendTransaction',
             params: [txParams],
           });
+
         } catch (error) {
           console.error('Payment failed:', error);
           alert('Payment failed. Check console for details.');
+          return;
+        }
+
+        // --------------------------------------------------------------------
+        // Build the JSON we want to sign
+        // --------------------------------------------------------------------
+        const attestData = {
+          from: fromAccount,
+          amount: amountInput,
+          sender: ourShipName,
+          receiver: receivingShipName
+          // Add more fields if needed, e.g. a timestamp or transaction hash
+        };
+
+        // --------------------------------------------------------------------
+        // Sign the message (JSON string)
+        // --------------------------------------------------------------------
+        try {
+          const messageToSign = JSON.stringify(attestData);
+
+          // personal_sign expects [data, fromAddress]
+          const signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [messageToSign, fromAccount]
+          });
+
+          attestData.signature = signature;
+
+          // ----------------------------------------------------------------
+          // Post the signed object to /apps/pay/attest
+          // ----------------------------------------------------------------
+          await fetch('/apps/pay/attest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(attestData)
+          });
+
+          console.log('Attestation posted:', attestData);
+
+        } catch (err) {
+          console.error('Failed to sign or attest:', err);
+          alert('Failed to sign or attest. Check console for details.');
         }
       });
 
