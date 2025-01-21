@@ -222,11 +222,17 @@
         const ledgerRoot = document.getElementById('ledgerRoot');
         ledgerRoot.innerHTML = '';
 
-        // The response might look like:
+        // Example shape of response:
         // {
         //   "address": "0x123..." or "none",
         //   "ledger": [
-        //     { "from": "0xabc...", "to": "0xdef...", "value": "0.1" },
+        //     {
+        //       "from-address": "0xabc...",
+        //       "to-address": "0xdef...",
+        //       "from-ship": "~sampel-palnet" or null,
+        //       "to-ship": "~zod" or null,
+        //       "value": "0.1"
+        //     },
         //     ...
         //   ],
         //   "our": "~zod"
@@ -255,14 +261,29 @@
             const txEl = document.createElement('div');
             txEl.className = 'transaction';
 
+            // FROM
             const fromP = document.createElement('p');
-            fromP.innerHTML = `<span class="label">From:</span> ${tx.from}`;
+            if (tx['from-ship']) {
+              // Ship is non-null, show ship as text with address as tooltip
+              fromP.innerHTML = `<span class="label">From:</span> 
+                <span title="${tx['from-address']}">${tx['from-ship']}</span>`;
+            } else {
+              // No ship, just display the address
+              fromP.innerHTML = `<span class="label">From:</span> ${tx['from-address']}`;
+            }
             txEl.appendChild(fromP);
 
+            // TO
             const toP = document.createElement('p');
-            toP.innerHTML = `<span class="label">To:</span> ${tx.to}`;
+            if (tx['to-ship']) {
+              toP.innerHTML = `<span class="label">To:</span> 
+                <span title="${tx['to-address']}">${tx['to-ship']}</span>`;
+            } else {
+              toP.innerHTML = `<span class="label">To:</span> ${tx['to-address']}`;
+            }
             txEl.appendChild(toP);
 
+            // VALUE
             const valueP = document.createElement('p');
             valueP.innerHTML = `<span class="label">Value:</span> ${tx.value}`;
             txEl.appendChild(valueP);
@@ -424,7 +445,7 @@
         // --------------------------------------------------------------------
         // Final POST to /apps/pay/attest
         // We'll send an object with:
-        //   signedData: { ship, address, signature }
+        //   signed: { ship, address, signature }
         //   receiver: the receiving ship name
         // --------------------------------------------------------------------
         const finalPostData = {

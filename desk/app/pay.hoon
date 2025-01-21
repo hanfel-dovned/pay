@@ -9,6 +9,7 @@
       wallet=address
       ledger=(list transaction)
       addresses=(map ship [=address retrieved=@da])
+      attested=(map address ship)
   ==
 +$  card  card:agent:gall
 --
@@ -139,15 +140,34 @@
   |=  [=wire sign=sign-arvo]
   ^+  that
     ?.  ?=([%iris %http-response *] sign)  that
-  =/  =address  +6:wire
   =/  response  client-response.sign
   ?+    -.response  that
       %finished
     =/  mime  (need full-file.response)
     =/  =json  (need (de:json:html q.data.mime))
-    =/  transactions  (dejs-response json)
-    =.  ledger  transactions
+    =/  unclaimed=(list [from=address to=address value=@t])
+      (dejs-response json)
+    =/  claimed  (append-attestations unclaimed)
+    =.  ledger  claimed
     that
+  ==
+::
+::  If a ship attested control of an address, 
+::  label that address in the transaction.
+++  append-attestations
+  |=  unclaimed=(list [from=address to=address value=@t])
+  ^-  (list transaction)
+  %+  turn
+    unclaimed
+  |=  [from=address to=address value=@t]
+  ^-  transaction
+  :*  :-  from
+      (~(get by attested) from)
+  ::
+      :-  to
+      (~(get by attested) to)
+  ::
+      value
   ==
 ::
 ::  Return our address to a ship that subscribes to us.
@@ -193,6 +213,8 @@
       %handle-http-request
     (handle-http !<([@ta =inbound-request:eyre] +.cage))
   ::
+  ::  Validate signature and, if successful, 
+  ::  save address-to-ship mapping.
       %pay-signature
     =/  =signature  !<(signature +.cage)
     ?.  =(ship.signature src.bowl)
@@ -202,6 +224,8 @@
       ~&  >>>  'Liar! Signature failed to validate!'
       that
     ~&  >  'Validated signature.'
+    =.  attested  
+      (~(put by attested) address.signature ship.signature)
     that
   ==
 ::
@@ -257,7 +281,7 @@
       =/  json  
         (de:json:html q.u.body.request.inbound-request)
       =/  parsed=[receiver=ship =signature]  
-        (dejs-attested-transaction (need json))
+        (dejs-post (need json))
       %-  emil
       %+  weld
         (flop (send [200 ~ [%json [%s 'sent']]]))
@@ -270,6 +294,7 @@
     ==
     ::
       %'GET'
+    =.  that  (emit (alchemy-card [wallet %.n]))  :: XX hack
     %-  emil  %-  flop  %-  send
     ?+    site  [404 ~ [%plain "404 - Not Found"]]
     ::
@@ -305,10 +330,12 @@
       :-  %a
       %+  turn
         ledger
-      |=  [from=@t to=@t value=@t]
+      |=  [from=id to=id value=@t]
       %-  pairs
-      :~  [%from [%s from]]
-          [%to [%s to]]
+      :~  [%from-address [%s address.from]]
+          [%from-ship ?~(claimed.from ~ [%s (scot %p u.claimed.from)])]
+          [%to-address [%s address.to]]
+          [%to-ship ?~(claimed.to ~ [%s (scot %p u.claimed.to)])]
           [%value [%s value]]
       ==
   ==
@@ -316,7 +343,7 @@
 ++  dejs-response
   |=  jon=json
   =,  dejs:format
-  ^-  (list transaction)
+  ^-  (list [=address =address =@t])
   %.  jon
   %-  ot
   :~  :-  %result
@@ -331,7 +358,7 @@
       ==
   ==
 ::
-++  dejs-attested-transaction
+++  dejs-post
   =,  dejs:format
   |=  jon=json
   ^-  [=ship =signature]

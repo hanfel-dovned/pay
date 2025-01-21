@@ -1,6 +1,11 @@
 |%
 +$  address  @t
-+$  transaction  [from=@t to=@t value=@t]
++$  id  [=address claimed=(unit ship)]
++$  transaction  
+  $:  from=id
+      to=id
+      value=@t
+  ==
 +$  signature
   $:  hancock=@t
       =ship
