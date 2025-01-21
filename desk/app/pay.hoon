@@ -202,6 +202,7 @@
     ?.  (validate signature)
       ~&  >>>  'Liar! Signature failed to validate!'
       that
+    ~&  >  'Validated signature.'
     that
   ==
 ::
@@ -350,10 +351,10 @@
   |=  =signature
   ^-  json
   %-  pairs
-  :~  [%sender [%s (scot %p sender.signature)]]
-      [%receiver [%s (scot %p receiver.signature)]]
-      [%from [%s from.signature]]
+  :~  [%from [%s from.signature]]
       [%amount [%s amount.signature]]
+      [%sender [%s (scot %p sender.signature)]]
+      [%receiver [%s (scot %p receiver.signature)]]
   ==
 ::
 ::  Validate that from.signature = signer of sig.signature
@@ -374,7 +375,6 @@
       (crip (a-co:co p.octs))
       q.octs
     ==
-  ~&  >>  note
   ?.  &(=(20 (met 3 addy)) =(65 (met 3 cock)))  %.n
   =/  r  (cut 3 [33 32] cock)
   =/  s  (cut 3 [1 32] cock)
