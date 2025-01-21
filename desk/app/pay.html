@@ -210,10 +210,8 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
-      // We'll store our own ship name here after fetching state
       let ourShipName = null;
-      // We'll also store the receiving ship name that user enters
-      let receivingShipName = null;
+      let receivingShipName = null; // The receiving Urbit ID user typed in
 
       // ----------------------------------------------------------------------
       // Fetch single address and ledger data
@@ -224,7 +222,7 @@
         const ledgerRoot = document.getElementById('ledgerRoot');
         ledgerRoot.innerHTML = '';
 
-        // The response is an object like:
+        // The response might look like:
         // {
         //   "address": "0x123..." or "none",
         //   "ledger": [
@@ -234,7 +232,7 @@
         //   "our": "~zod"
         // }
         const { address, ledger, our } = data;
-        ourShipName = our; // store our own ship name
+        ourShipName = our;
 
         const container = document.createElement('div');
         container.className = 'ledger-container';
@@ -251,7 +249,7 @@
 
         container.appendChild(addressEl);
 
-        // Display the ledger transactions only if address != 'none'
+        // Display transactions if address != 'none'
         if (address !== 'none') {
           ledger.forEach(tx => {
             const txEl = document.createElement('div');
@@ -280,7 +278,7 @@
       }
 
       // ----------------------------------------------------------------------
-      // Payment logic (two-phase address fetch + MetaMask payment + signature)
+      // Payment logic
       // ----------------------------------------------------------------------
       let foundAddress = null;
       let pollInterval = null;
@@ -292,6 +290,7 @@
       const destinationAddress = document.getElementById('destinationAddress');
       const amountContainer = document.getElementById('amountContainer');
 
+      // Step 1: getAddress -> poll
       getAddressBtn.addEventListener('click', async () => {
         receivingShipName = document.getElementById('addressString').value.trim();
         if (!receivingShipName) {
@@ -349,7 +348,7 @@
         }
       });
 
-      // Pay and Sign
+      // Step 2: Pay + sign
       document.getElementById('payBtn').addEventListener('click', async () => {
         const amountInput = document.getElementById('paymentAmount').value;
         if (!amountInput) {
@@ -382,18 +381,17 @@
           const amountWei = BigInt(Math.floor(parseFloat(amountInput) * 1e18));
           const hexValue = '0x' + amountWei.toString(16);
 
+          // Submit the transaction
           const txParams = {
             from: fromAccount,
             to: foundAddress,
             value: hexValue
           };
 
-          // Submit transaction
           await window.ethereum.request({
             method: 'eth_sendTransaction',
             params: [txParams],
           });
-
         } catch (error) {
           console.error('Payment failed:', error);
           alert('Payment failed. Check console for details.');
@@ -401,44 +399,54 @@
         }
 
         // --------------------------------------------------------------------
-        // Build the JSON we want to sign
+        // Build JSON to sign: only "ship" and "address"
         // --------------------------------------------------------------------
-        const attestData = {
-          from: fromAccount,
-          amount: amountInput,
-          receiver: receivingShipName,
-          sender: ourShipName
-          // Add more fields if needed, e.g. a timestamp or transaction hash
+        const dataToSign = {
+          address: fromAccount,
+          ship: ourShipName
         };
 
-        // --------------------------------------------------------------------
-        // Sign the message (JSON string)
-        // --------------------------------------------------------------------
+        // Sign the JSON
+        let signature;
         try {
-          const messageToSign = JSON.stringify(attestData);
+          const messageToSign = JSON.stringify(dataToSign);
 
-          // personal_sign expects [data, fromAddress]
-          const signature = await window.ethereum.request({
+          signature = await window.ethereum.request({
             method: 'personal_sign',
             params: [messageToSign, fromAccount]
           });
+        } catch (err) {
+          console.error('Signing error:', err);
+          alert('Failed to sign. Check console for details.');
+          return;
+        }
 
-          attestData.signature = signature;
+        // --------------------------------------------------------------------
+        // Final POST to /apps/pay/attest
+        // We'll send an object with:
+        //   signedData: { ship, address, signature }
+        //   receiver: the receiving ship name
+        // --------------------------------------------------------------------
+        const finalPostData = {
+          signed: {
+            ship: ourShipName,
+            address: fromAccount,
+            signature
+          },
+          receiver: receivingShipName
+        };
 
-          // ----------------------------------------------------------------
-          // Post the signed object to /apps/pay/attest
-          // ----------------------------------------------------------------
+        try {
           await fetch('/apps/pay/attest', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(attestData)
+            body: JSON.stringify(finalPostData)
           });
 
-          console.log('Attestation posted:', attestData);
-
-        } catch (err) {
-          console.error('Failed to sign or attest:', err);
-          alert('Failed to sign or attest. Check console for details.');
+          console.log('Attestation posted:', finalPostData);
+        } catch (postErr) {
+          console.error('Failed to post attestation:', postErr);
+          alert('Failed to post attestation. Check console for details.');
         }
       });
 
@@ -461,7 +469,6 @@
             return;
           }
 
-          // Simply reload without popping an alert
           location.reload();
         } catch (err) {
           console.error('Failed to change address:', err);

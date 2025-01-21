@@ -195,9 +195,8 @@
   ::
       %pay-signature
     =/  =signature  !<(signature +.cage)
-    ~&  signature
-    ?.  =(sender.signature src.bowl)
-      ~&  >>>  'Liar! This poke did not come from <sender.signature>!'
+    ?.  =(ship.signature src.bowl)
+      ~&  >>>  'Liar! This poke did not come from <ship.signature>!'
       that
     ?.  (validate signature)
       ~&  >>>  'Liar! Signature failed to validate!'
@@ -257,14 +256,15 @@
       ?~  body.request.inbound-request  !!
       =/  json  
         (de:json:html q.u.body.request.inbound-request)
-      =/  =signature  (dejs-signature (need json))
+      =/  parsed=[receiver=ship =signature]  
+        (dejs-attested-transaction (need json))
       %-  emil
       %+  weld
         (flop (send [200 ~ [%json [%s 'sent']]]))
       :~  ^-  card
           :*  %pass  /signatures  %agent
-              [receiver.signature %pay]  %poke
-              %pay-signature  !>(signature)
+              [receiver.parsed %pay]  %poke
+              %pay-signature  !>(signature.parsed)
           ==
       ==
     ==
@@ -331,17 +331,25 @@
       ==
   ==
 ::
-++  dejs-signature
+++  dejs-attested-transaction
+  =,  dejs:format
+  |=  jon=json
+  ^-  [=ship =signature]
+  %.  jon
+  %-  ot
+  :~  [%receiver (se %p)]
+      [%signed dejs-attestation]
+  ==
+::
+++  dejs-attestation
   =,  dejs:format
   |=  jon=json
   ^-  signature
   %.  jon
   %-  ot
   :~  [%signature so]
-      [%sender (se %p)]
-      [%receiver (se %p)]
-      [%from so]
-      [%amount so]
+      [%ship (se %p)]
+      [%address so]
   ==
 ::
 ::  Encode the signed message back into JSON
@@ -351,17 +359,15 @@
   |=  =signature
   ^-  json
   %-  pairs
-  :~  [%from [%s from.signature]]
-      [%amount [%s amount.signature]]
-      [%sender [%s (scot %p sender.signature)]]
-      [%receiver [%s (scot %p receiver.signature)]]
+  :~  [%address [%s address.signature]]
+      [%ship [%s (scot %p ship.signature)]]
   ==
 ::
 ::  Validate that from.signature = signer of sig.signature
 ++  validate
   |=  =signature
   ^-  ?
-  =/  addy  (from-tape (trip from.signature))
+  =/  addy  (from-tape (trip address.signature))
   =/  cock  (from-tape (trip hancock.signature))
   =/  note=@uvI
     =/  octs
