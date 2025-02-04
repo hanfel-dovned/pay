@@ -10,6 +10,8 @@
       ledger=(list transaction)
       addresses=(map ship [=address retrieved=@da])
       attested=(map address ship)
+      requests=(map @da request)
+      outgoing=(map @da request)
   ==
 +$  card  card:agent:gall
 --
@@ -227,6 +229,13 @@
     =.  attested  
       (~(put by attested) address.signature ship.signature)
     that
+  ::
+  ::  Receive a payment request from poker.
+      %pay-request
+    =/  =request  !<(request +.cage)
+    =.  requests
+      (~(put by requests) now.bowl [src.bowl amount.request message.request])
+    that
   ==
 ::
 ++  handle-http
@@ -291,6 +300,25 @@
               %pay-signature  !>(signature.parsed)
           ==
       ==
+    ::
+    ::  Poke to.request with a payment request
+    ::  and save the outgoing request.
+        [%apps %pay %request ~]
+      ?~  body.request.inbound-request  !!
+      =/  json  
+        (de:json:html q.u.body.request.inbound-request)
+      =/  =request  (dejs-request (need json))
+      =.  outgoing
+        (~(put by outgoing) now.bowl request)
+      %-  emil
+      %+  weld
+        (flop (send [200 ~ [%json [%s 'sent']]]))
+      :~  ^-  card
+          :*  %pass  /requests  %agent
+              [who.request %pay]  %poke
+              %pay-request  !>(request)
+          ==
+      ==
     ==
     ::
       %'GET'
@@ -326,6 +354,19 @@
   %-  pairs
   :~  [%our [%s (scot %p our.bowl)]]
       [%address [%s wallet]]
+      ::
+      :-  %requests
+      :-  %a
+      %+  turn
+        ~(tap by requests)
+      |=  [key=@da [from=@p amount=@t text=@t]]
+      %-  pairs
+      :~  [%key (time key)]
+          [%from (ship from)]
+          [%amount [%s amount]]
+          [%text [%s text]]
+      ==
+      ::
       :-  %ledger
       :-  %a
       %+  turn
@@ -377,6 +418,14 @@
   :~  [%signature so]
       [%ship (se %p)]
       [%address so]
+  ==
+::
+++  dejs-request
+  =,  dejs:format
+  |=  jon=json
+  %.  jon
+  %-  ot
+  :~  [%request (ot [to+(se %p) amount+so message+so ~])]
   ==
 ::
 ::  Encode the signed message back into JSON

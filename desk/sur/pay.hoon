@@ -1,5 +1,6 @@
 |%
 +$  address  @t
++$  request  [who=@p amount=@t message=@t]
 +$  id  [=address claimed=(unit ship)]
 +$  transaction  
   $:  from=id
