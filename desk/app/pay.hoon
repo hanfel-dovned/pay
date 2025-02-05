@@ -10,6 +10,8 @@
       ledger=(list transaction)
       addresses=(map ship [=address retrieved=@da])
       attested=(map address ship)
+      requests=(map @da request)
+      outgoing=(map @da request)
   ==
 +$  card  card:agent:gall
 --
@@ -227,6 +229,13 @@
     =.  attested  
       (~(put by attested) address.signature ship.signature)
     that
+  ::
+  ::  Receive a payment request from poker.
+      %pay-request
+    =/  =request  !<(request +.cage)
+    =.  requests
+      (~(put by requests) now.bowl [src.bowl amount.request message.request])
+    that
   ==
 ::
 ++  handle-http
@@ -239,59 +248,6 @@
   ::
   ?+    method.request.inbound-request
     (emil (flop (send [405 ~ [%stock ~]])))
-    ::
-      %'POST'
-    ?+    site  
-      (emil (flop (send [404 ~ [%plain "404 - Not Found"]])))
-    ::
-    ::  Edit my wallet address.
-    ::  Delete ledger and check Alchemy.
-        [%apps %pay %change-address @ ~]
-      =/  =address  +30:site
-      =.  wallet  address
-      =.  ledger  ~
-      %-  emil
-      %+  weld
-        (flop (send [200 ~ [%json [%s 'waiting']]]))
-      :~  %-  alchemy-card
-          [wallet %.n]
-        ::
-        ::  XX Send a card to Behn to start the retrieval timer.
-        ::  Have Behn alternate between from=%.n and from=%.y.
-        ::
-      ==
-    ::
-    ::  Retrieve the wallet address of the user
-    ::  specified in the URL.
-        [%apps %pay %find-address @ ~]
-      =/  =ship  (slav %p +30:site)
-      %-  emil
-      %+  weld
-        (flop (send [200 ~ [%json [%s 'waiting']]]))
-      :~  ^-  card
-          :*  %pass  /addresses  %agent
-              [ship %pay]  %watch  /address
-          ==
-      ==
-    ::
-    ::  Poke the receiver of the transaction with
-    ::  a messaged signed by the sending address.
-        [%apps %pay %attest ~]
-      ?~  body.request.inbound-request  !!
-      =/  json  
-        (de:json:html q.u.body.request.inbound-request)
-      =/  parsed=[receiver=ship =signature]  
-        (dejs-post (need json))
-      %-  emil
-      %+  weld
-        (flop (send [200 ~ [%json [%s 'sent']]]))
-      :~  ^-  card
-          :*  %pass  /signatures  %agent
-              [receiver.parsed %pay]  %poke
-              %pay-signature  !>(signature.parsed)
-          ==
-      ==
-    ==
     ::
       %'GET'
     =.  that  (emit (alchemy-card [wallet %.n]))  :: XX hack
@@ -318,6 +274,75 @@
         ['status' [%s 'waiting']]~
       ['address' [%s address.u.log]]~
     ==
+  ::
+      %'POST'
+    ?+    site  
+        (emil (flop (send [404 ~ [%plain "404 - Not Found"]])))
+    ::
+        [%apps %pay %action ~]
+      ?~  body.request.inbound-request  !!
+      =/  jon=(unit json)
+        (de:json:html q.u.body.request.inbound-request)
+      =/  =action  (dejs-action (need jon))
+      ?-    -.action
+      ::
+      ::  Edit my wallet address.
+      ::  Delete ledger and check Alchemy.
+          %change-address
+        =.  wallet  address.action
+        =.  ledger  ~
+        %-  emil
+        %+  weld
+          (flop (send [200 ~ [%json [%s 'waiting']]]))
+        :~  %-  alchemy-card
+            [wallet %.n]
+          ::
+          ::  XX Send a card to Behn to start the retrieval timer.
+          ::  Have Behn alternate between from=%.n and from=%.y.
+          ::
+        ==
+      ::
+      ::  Retrieve the wallet address of the given user.
+          %find-address
+        =/  =ship  ship.action
+        %-  emil
+        %+  weld
+          (flop (send [200 ~ [%json [%s 'waiting']]]))
+        :~  ^-  card
+            :*  %pass  /addresses  %agent
+                [ship %pay]  %watch  /address
+            ==
+        ==
+      ::
+      ::  Poke requestee with a payment request
+      ::  and save that outgoing request.
+          %request
+        =.  outgoing
+          (~(put by outgoing) now.bowl request.action)
+        %-  emil
+        %+  weld
+          (flop (send [200 ~ [%json [%s 'sent']]]))
+        :~  ^-  card
+            :*  %pass  /requests  %agent
+                [who.request.action %pay]  %poke
+                %pay-request  !>(request.action)
+            ==
+        ==
+      ::
+      ::  Poke the receiver of the transaction with
+      ::  a messaged signed by the sending address.
+          %attest
+        %-  emil
+        %+  weld
+          (flop (send [200 ~ [%json [%s 'sent']]]))
+        :~  ^-  card
+            :*  %pass  /signatures  %agent
+                [receiver.action %pay]  %poke
+                %pay-signature  !>(signature.action)
+            ==
+        ==
+      ==
+    ==
   ==
 ::
 ++  enjs-state
@@ -326,6 +351,19 @@
   %-  pairs
   :~  [%our [%s (scot %p our.bowl)]]
       [%address [%s wallet]]
+      ::
+      :-  %requests
+      :-  %a
+      %+  turn
+        ~(tap by requests)
+      |=  [key=@da [from=@p amount=@t text=@t]]
+      %-  pairs
+      :~  [%key (time key)]
+          [%from (ship from)]
+          [%amount [%s amount]]
+          [%text [%s text]]
+      ==
+      ::
       :-  %ledger
       :-  %a
       %+  turn
@@ -358,25 +396,25 @@
       ==
   ==
 ::
-++  dejs-post
+++  dejs-action
   =,  dejs:format
   |=  jon=json
-  ^-  [=ship =signature]
+  ^-  action
   %.  jon
-  %-  ot
-  :~  [%receiver (se %p)]
-      [%signed dejs-attestation]
-  ==
-::
-++  dejs-attestation
-  =,  dejs:format
-  |=  jon=json
-  ^-  signature
-  %.  jon
-  %-  ot
-  :~  [%signature so]
-      [%ship (se %p)]
-      [%address so]
+  %-  of
+  :~  [%change-address so]
+      [%find-address (se %p)]
+      [%request (ot [who+(se %p) amount+so message+so ~])]
+      :-  %attest
+      %-  ot
+      :~  [%receiver (se %p)]
+          :-  %signed
+          %-  ot
+          :~  [%signature so]
+              [%ship (se %p)]
+              [%address so]
+          ==
+      ==
   ==
 ::
 ::  Encode the signed message back into JSON
