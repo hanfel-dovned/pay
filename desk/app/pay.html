@@ -320,9 +320,11 @@
         }
 
         try {
-          // 1) Initiate address lookup
-          const postRes = await fetch(`/apps/pay/find-address/${encodeURIComponent(receivingShipName)}`, {
-            method: 'POST'
+          // 1) Initiate address lookup using the new POST API
+          const postRes = await fetch('/apps/pay/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ "find-address": receivingShipName })
           });
           if (!postRes.ok) {
             alert(`Failed to initiate address lookup: ${postRes.status}`);
@@ -443,22 +445,23 @@
         }
 
         // --------------------------------------------------------------------
-        // Final POST to /apps/pay/attest
+        // Final POST to /apps/pay/action with attest action
         // We'll send an object with:
-        //   signed: { ship, address, signature }
-        //   receiver: the receiving ship name
+        // { attest: { receiver, signed: {ship, address, signature} } }
         // --------------------------------------------------------------------
         const finalPostData = {
-          signed: {
-            ship: ourShipName,
-            address: fromAccount,
-            signature
-          },
-          receiver: receivingShipName
+          attest: {
+            receiver: receivingShipName,
+            signed: {
+              ship: ourShipName,
+              address: fromAccount,
+              signature
+            }
+          }
         };
 
         try {
-          await fetch('/apps/pay/attest', {
+          await fetch('/apps/pay/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(finalPostData)
@@ -482,8 +485,10 @@
         }
 
         try {
-          const res = await fetch(`/apps/pay/change-address/${encodeURIComponent(newAddress)}`, {
-            method: 'POST'
+          const res = await fetch('/apps/pay/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ "change-address": newAddress })
           });
           if (!res.ok) {
             alert(`Failed to change address: ${res.status}`);
