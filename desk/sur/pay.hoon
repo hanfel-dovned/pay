@@ -12,4 +12,10 @@
       =ship
       address=@t
   ==
++$  action
+  $%  [%change-address =address]
+      [%find-address =ship]
+      [%request =request]
+      [%attest receiver=ship =signature]
+  ==
 --
