@@ -423,6 +423,9 @@
   =,  enjs:format
   |=  =signature
   ^-  json
+  ::  Make sure the frontend orders this JSON the same
+  ::  as ++pairs output, or validation will fail.
+  ::  Input list order does not matter for ++pairs.
   %-  pairs
   :~  [%address [%s address.signature]]
       [%ship [%s (scot %p ship.signature)]]
