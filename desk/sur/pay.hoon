@@ -19,5 +19,6 @@
       [%find-address =ship]
       [%request =request]
       [%attest receiver=ship =signature]
+      [%note hash=@t note=@t]
   ==
 --

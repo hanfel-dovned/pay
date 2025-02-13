@@ -7,7 +7,7 @@
 +$  state-0  
   $:  %0
       wallet=address
-      ledger=(list transaction)
+      ledger=(list [transaction note=@t])
       addresses=(map ship [=address retrieved=@da])
       attested=(map address ship)
       requests=(map @da request)
@@ -152,12 +152,14 @@
     =/  unclaimed=(list [from=address to=address value=@t block=@t hash=@t])
       (dejs-response json)
     =/  claimed  (append-attestations unclaimed)
-    =.  ledger  claimed
+    =/  withnotes  (turn claimed |=(=transaction [transaction '']))
+    =.  ledger  (weld ledger withnotes)
     ::  We need to check the same range twice, 
     ::  once each for %.n and %.y
+    ?~  ledger  that
     =.  previous
       ?:  from.previous
-        [block:(rear claimed) %.n]
+        [block:(rear ledger) %.n]
       [block.previous %.y]
     that
   ==
@@ -351,6 +353,18 @@
                 %pay-signature  !>(signature.action)
             ==
         ==
+      ::
+      ::  Update the note for a transaction.
+          %note
+        %=  that
+          ledger
+          %+  turn
+            ledger
+          |=  [=transaction note=@t]
+          ?:  =(hash.action hash.transaction)
+            [transaction note.action]
+          [transaction note]
+        ==
       ==
     ==
   ==
@@ -378,7 +392,7 @@
       :-  %a
       %+  turn
         ledger
-      |=  [from=id to=id value=@t block=@t hash=@t]
+      |=  [[from=id to=id value=@t block=@t hash=@t] note=@t]
       %-  pairs
       :~  [%from-address [%s address.from]]
           [%from-ship ?~(claimed.from ~ [%s (scot %p u.claimed.from)])]
@@ -387,6 +401,7 @@
           [%value [%s value]]
           [%block [%s block]]
           [%hash [%s hash]]
+          [%note [%s note]]
       ==
   ==
 ::
