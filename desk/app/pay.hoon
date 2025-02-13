@@ -147,7 +147,7 @@
       %finished
     =/  mime  (need full-file.response)
     =/  =json  (need (de:json:html q.data.mime))
-    =/  unclaimed=(list [from=address to=address value=@t])
+    =/  unclaimed=(list [from=address to=address value=@t block=@t hash=@t])
       (dejs-response json)
     =/  claimed  (append-attestations unclaimed)
     =.  ledger  claimed
@@ -157,11 +157,11 @@
 ::  If a ship attested control of an address, 
 ::  label that address in the transaction.
 ++  append-attestations
-  |=  unclaimed=(list [from=address to=address value=@t])
+  |=  unclaimed=(list [from=address to=address value=@t block=@t hash=@t])
   ^-  (list transaction)
   %+  turn
     unclaimed
-  |=  [from=address to=address value=@t]
+  |=  [from=address to=address value=@t block=@t hash=@t]
   ^-  transaction
   :*  :-  from
       (~(get by attested) from)
@@ -170,6 +170,8 @@
       (~(get by attested) to)
   ::
       value
+      block
+      hash
   ==
 ::
 ::  Return our address to a ship that subscribes to us.
@@ -368,20 +370,24 @@
       :-  %a
       %+  turn
         ledger
-      |=  [from=id to=id value=@t]
+      |=  [from=id to=id value=@t block=@t hash=@t]
       %-  pairs
       :~  [%from-address [%s address.from]]
           [%from-ship ?~(claimed.from ~ [%s (scot %p u.claimed.from)])]
           [%to-address [%s address.to]]
           [%to-ship ?~(claimed.to ~ [%s (scot %p u.claimed.to)])]
           [%value [%s value]]
+          [%block [%s block]]
+          [%hash [%s hash]]
       ==
   ==
 ::
+::  Turn an alchemy response into a list of
+::  unclaimed transactions.
 ++  dejs-response
   |=  jon=json
   =,  dejs:format
-  ^-  (list [=address =address =@t])
+  ^-  (list [=address =address value=@t block=@t hash=@t])
   %.  jon
   %-  ot
   :~  :-  %result
@@ -392,6 +398,8 @@
           :~  from+so
               to+so
               value+no
+              ['blockNum' so]
+              hash+so
           ==
       ==
   ==

@@ -6,6 +6,8 @@
   $:  from=id
       to=id
       value=@t
+      block=@t
+      hash=@t
   ==
 +$  signature
   $:  hancock=@t
