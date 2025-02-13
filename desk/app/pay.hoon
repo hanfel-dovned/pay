@@ -436,6 +436,7 @@
   :~  [%change-address so]
       [%find-address (se %p)]
       [%request (ot [who+(se %p) amount+so message+so ~])]
+      [%note (ot [hash+so note+so ~])]
       :-  %attest
       %-  ot
       :~  [%receiver (se %p)]
