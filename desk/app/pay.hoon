@@ -12,6 +12,7 @@
       attested=(map address ship)
       requests=(map @da request)
       outgoing=(map @da request)
+      previous=[block=@t from=?]
   ==
 +$  card  card:agent:gall
 --
@@ -84,6 +85,7 @@
 ++  init
   ^+  that
   =.  wallet  'none'
+  =.  previous  ['0x0' %.n]
   %-  emit
   :*  %pass   /eyre/connect   
       %arvo  %e  %connect
@@ -93,18 +95,18 @@
 ::  Create an Iris card containing an
 ::  HTTP request to Alchemy, asking
 ::  for transactions either from this address
-::  or to this address.
+::  or to this address, starting from block.
 ++  alchemy-card
-  |=  [=address from=?]
+  |=  [=address block=@t from=?]
   ^-  card
   :*  %pass  /alchemy/[address]  %arvo  %i
-      %request  (alchemy-request address from) 
+      %request  (alchemy-request address block from) 
       *outbound-config:iris
   ==
 ::
 ::  Create an HTTP request to Alchemy.
 ++  alchemy-request
-  |=  [=address from=?]
+  |=  [=address block=@t from=?]
   ^-  request:http
   :*  %'POST'
       'https://eth-sepolia.g.alchemy.com/v2/Qv7RwrBl83LReBuiT_E8KcAjEkoe4yd6'
@@ -123,7 +125,7 @@
           :-  %params            
           :-  %a
           :~  %-  pairs:enjs:format
-              :~  ['fromBlock' s+'0x0']  :: XX shouldn't start from 0x0 every time
+              :~  ['fromBlock' s+block]
                   ['toBlock' s+'latest']
                   ['category' [%a [[%s 'external'] ~]]]
                   ['order' s+'asc']
@@ -151,6 +153,12 @@
       (dejs-response json)
     =/  claimed  (append-attestations unclaimed)
     =.  ledger  claimed
+    ::  We need to check the same range twice, 
+    ::  once each for %.n and %.y
+    =.  previous
+      ?:  from.previous
+        [block:(rear claimed) %.n]
+      [block.previous %.y]
     that
   ==
 ::
@@ -252,7 +260,7 @@
     (emil (flop (send [405 ~ [%stock ~]])))
     ::
       %'GET'
-    =.  that  (emit (alchemy-card [wallet %.n]))  :: XX hack
+    =.  that  (emit (alchemy-card [wallet block.previous %.n]))  :: XX hack
     %-  emil  %-  flop  %-  send
     ?+    site  [404 ~ [%plain "404 - Not Found"]]
     ::
@@ -297,7 +305,7 @@
         %+  weld
           (flop (send [200 ~ [%json [%s 'waiting']]]))
         :~  %-  alchemy-card
-            [wallet %.n]
+            [wallet block.previous %.n]
           ::
           ::  XX Send a card to Behn to start the retrieval timer.
           ::  Have Behn alternate between from=%.n and from=%.y.
