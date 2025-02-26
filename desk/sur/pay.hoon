@@ -1,6 +1,6 @@
 |%
 +$  address  @t
-+$  request  [who=@p amount=@t message=@t]
++$  request  [who=@p amount=@t message=@t] :: For the same request, the receiver and sender use opposite `who`s
 +$  id  [=address claimed=(unit ship)]
 +$  transaction  
   $:  from=id
@@ -15,10 +15,12 @@
       address=@t
   ==
 +$  action
-  $%  [%change-address =address]
+  $%  [%change-alchemy url=@t]
+      [%change-address =address]
       [%find-address =ship]
       [%request =request]
       [%attest receiver=ship =signature]
+      [%fulfill-request key=@da]
       [%note hash=@t note=@t]
   ==
 --

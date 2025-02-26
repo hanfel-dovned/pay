@@ -6,6 +6,7 @@
 +$  versioned-state  $%(state-0)
 +$  state-0  
   $:  %0
+      alchemy-url=@t
       wallet=address
       ledger=(list [transaction note=@t])
       addresses=(map ship [=address retrieved=@da])
@@ -86,6 +87,8 @@
   ^+  that
   =.  wallet  'none'
   =.  previous  ['0x0' %.n]
+  =.  alchemy-url
+    'https://eth-sepolia.g.alchemy.com/v2/Qv7RwrBl83LReBuiT_E8KcAjEkoe4yd6'
   %-  emit
   :*  %pass   /eyre/connect   
       %arvo  %e  %connect
@@ -109,7 +112,7 @@
   |=  [=address block=@t from=?]
   ^-  request:http
   :*  %'POST'
-      'https://eth-sepolia.g.alchemy.com/v2/Qv7RwrBl83LReBuiT_E8KcAjEkoe4yd6'
+      alchemy-url
       :~  ['Content-Type' 'application/json']
           ['accept' 'application/json']
       ==
@@ -151,7 +154,7 @@
     =/  =json  (need (de:json:html q.data.mime))
     =/  unclaimed=(list [from=address to=address value=@t block=@t hash=@t])
       (dejs-response json)
-    =/  claimed  (append-attestations unclaimed)
+    =/  claimed  (append-attestations unclaimed)    
     =/  withnotes  (turn claimed |=(=transaction [transaction '']))
     =.  ledger  (weld ledger withnotes)
     ::  We need to check the same range twice, 
@@ -227,6 +230,10 @@
       %handle-http-request
     (handle-http !<([@ta =inbound-request:eyre] +.cage))
   ::
+  ::  User actions.
+      %pay-action
+    (handle-action !<(action +.cage))
+  ::
   ::  Validate signature and, if successful, 
   ::  save address-to-ship mapping.
       %pay-signature
@@ -250,6 +257,7 @@
     that
   ==
 ::
+::  Handle HTTP request.
 ++  handle-http
   |=  [eyre-id=@ta =inbound-request:eyre]
   ^+  that
@@ -296,79 +304,76 @@
       =/  jon=(unit json)
         (de:json:html q.u.body.request.inbound-request)
       =/  =action  (dejs-action (need jon))
-      ?-    -.action
-      ::
-      ::  Edit my wallet address.
-      ::  Delete ledger and check Alchemy.
-          %change-address
-        =.  wallet  address.action
-        =.  ledger  ~
-        %-  emil
-        %+  weld
-          (flop (send [200 ~ [%json [%s 'waiting']]]))
-        :~  %-  alchemy-card
-            [wallet block.previous %.n]
-          ::
-          ::  XX Send a card to Behn to start the retrieval timer.
-          ::  Have Behn alternate between from=%.n and from=%.y.
-          ::
-        ==
-      ::
-      ::  Retrieve the wallet address of the given user.
-          %find-address
-        =/  =ship  ship.action
-        %-  emil
-        %+  weld
-          (flop (send [200 ~ [%json [%s 'waiting']]]))
-        :~  ^-  card
-            :*  %pass  /addresses  %agent
-                [ship %pay]  %watch  /address
-            ==
-        ==
-      ::
-      ::  Poke requestee with a payment request
-      ::  and save that outgoing request.
-          %request
-        =.  outgoing
-          (~(put by outgoing) now.bowl request.action)
-        %-  emil
-        %+  weld
-          (flop (send [200 ~ [%json [%s 'sent']]]))
-        :~  ^-  card
-            :*  %pass  /requests  %agent
-                [who.request.action %pay]  %poke
-                %pay-request  !>(request.action)
-            ==
-        ==
-      ::
-      ::  Poke the receiver of the transaction with
-      ::  a messaged signed by the sending address.
-          %attest
-        %-  emil
-        %+  weld
-          (flop (send [200 ~ [%json [%s 'sent']]]))
-        :~  ^-  card
-            :*  %pass  /signatures  %agent
-                [receiver.action %pay]  %poke
-                %pay-signature  !>(signature.action)
-            ==
-        ==
-      ::
-      ::  Update the note for a transaction.
-          %note
-        %=  that
-          ledger
-          %+  turn
-            ledger
-          |=  [=transaction note=@t]
-          ?:  =(hash.action hash.transaction)
-            [transaction note.action]
-          [transaction note]
-        ==
-      ==
+      =.  that  (handle-action action)
+      %-  emil
+      (flop (send [200 ~ [%none ~]]))
     ==
   ==
 ::
+::  Handle user action.
+++  handle-action
+  |=  =action
+  ^+  that
+  ?-    -.action
+  ::
+  ::  Change the Alchemy node.
+      %change-alchemy
+    that(alchemy-url url.action)
+  ::
+  ::  Edit my wallet address.
+  ::  Delete ledger and check Alchemy.
+      %change-address
+    =.  wallet  address.action
+    =.  ledger  ~
+    %-  emit  
+    (alchemy-card [wallet block.previous %.n])
+  ::
+  ::  Retrieve the wallet address of the given user.
+      %find-address
+    =/  =ship  ship.action
+    %-  emit
+    :*  %pass  /addresses  %agent 
+        [ship %pay]  %watch  /address
+    ==
+  ::
+  ::  Poke requestee with a payment request
+  ::  and save that outgoing request.
+      %request
+    =.  outgoing
+      (~(put by outgoing) now.bowl request.action)
+    %-  emit
+    :*  %pass  /requests  %agent
+        [who.request.action %pay]  %poke
+        %pay-request  !>(request.action)
+    ==
+  ::
+  ::  Poke the receiver of the transaction with
+  ::  a messaged signed by the sending address.
+      %attest
+    %-  emit
+    :*  %pass  /signatures  %agent
+        [receiver.action %pay]  %poke
+        %pay-signature  !>(signature.action)
+    ==
+  ::
+  ::  Wipe a request from our state after paying it.
+      %fulfill-request
+    that(requests (~(del by requests) key.action))
+  ::
+  ::  Update the note for a transaction.
+      %note
+    %=  that
+      ledger
+      %+  turn
+        ledger
+      |=  [=transaction note=@t]
+      ?:  =(hash.action hash.transaction)
+        [transaction note.action]
+      [transaction note]
+    ==
+  ==
+::
+::  State to JSON.
 ++  enjs-state
   =,  enjs:format
   ^-  json
@@ -427,13 +432,15 @@
       ==
   ==
 ::
+::  JSON to user action.
 ++  dejs-action
   =,  dejs:format
   |=  jon=json
   ^-  action
   %.  jon
   %-  of
-  :~  [%change-address so]
+  :~  [%change-alchemy so]
+      [%change-address so]
       [%find-address (se %p)]
       [%request (ot [who+(se %p) amount+so message+so ~])]
       [%note (ot [hash+so note+so ~])]
